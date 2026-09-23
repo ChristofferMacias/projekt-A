@@ -9,6 +9,11 @@ output:
 ---
 
 ```{r}
+
+```
+
+
+```{r}
 c <- read.csv("A2_charter.csv")
 
 tommodel <- lm(y~1, c)
@@ -17,13 +22,21 @@ enkelmodel <- lm(y~x1+x2+x3+x4+x5+x6+x7+x8+x9+x10+x11+x12+x13+x14+x15+x16+x17+x1
 summary(enkelmodel)
 
 korr_matrix<-cor(c)
-#korr_long<- as.data.frame(as.table(korr_matrix))
-#names(korr_long<-c("Var1","Var2","Korrelation"))
-#korr_long<-korr_long[korr_long$Var1 != korr_long$Var2,]
-#korr_long<-korr_long[!duplicated(t(apply(korr_long[,1:2],1,sort))),]
-#korr_long<-korr_long[order(~abs(korr_long$Korrelation)),]
-#print(korr_long,row.names=FALSE)
+korr_matrix<-korr_matrix[,-1]
+korr_matrix<-korr_matrix[-1,]
+korr_matrix[upper.tri(korr_matrix, diag = TRUE)] <- 0
 
-pairs(~y+x1+x2+x3+x4+x5+x6+x7+x8+x9+x10+x11+x12+x13+x14+x15+x16+x17+x18+x19, data = c)
-head(c)
+idx <- which(abs(korr_matrix) > 0.7, arr.ind = TRUE)
+
+multiz <- data.frame(
+  namn = paste0(rownames(korr_matrix)[idx[,1]], "-", colnames(korr_matrix)[idx[,2]]),
+  observation = korr_matrix[idx]
+)
+
+print(multiz[order(-abs(multiz$observation)), ])
+
+
+
+#pairs(~y+x1+x2+x3+x4+x5+x6+x7+x8+x9+x10+x11+x12+x13+x14+x15+x16+x17+x18+x19, data = c)
+#head(c)
 ```
