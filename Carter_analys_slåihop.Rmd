@@ -1,0 +1,82 @@
+---
+title: "Charter_analys_slåihop"
+author: "Christoffer Macias"
+date: "2026-09-25"
+output: html_document
+---
+
+```{r}
+library(car)
+d <- read.csv("A2_charter.csv")
+d$x2 <- factor(d$x2)
+
+# Kolla forst om x9 och x14 ens ar korrelerade (motiverar kombinationen)
+cat("Korrelation x9 vs x14:", round(cor(d$x9, d$x14), 3), "\n")
+
+# Skapa x20: standardiserad summa av sol + temp (aktuellt kvartal)
+d$x20 <- as.numeric(scale(d$x9) + scale(d$x14))
+
+# Bygg och jamfor modellerna
+m_orig <- lm(y ~ x1 + x4 +x6+ x7+ x8 + x9 + x11+ x13+ x16+ x19, data = d)
+m_x20  <- lm(y ~ x1 + x4 +x6+ x7+ x8 + x19 + x20,, data = d)
+
+summary(m_orig)
+vif(m_orig)
+summary(m_x20)
+vif(m_x20)
+
+# LOOCV-funktion (leave-one-out cross-validation)
+loocv_rmse <- function(formula, data) {
+  n <- nrow(data)
+  errs <- numeric(n)
+  for (i in 1:n) {
+    fit  <- lm(formula, data = data[-i, ])
+    pred <- predict(fit, newdata = data[i, ])
+    errs[i] <- data$y[i] - pred
+  }
+  sqrt(mean(errs^2))
+}
+
+cat("LOOCV RMSE med konjunktur: ", round(loocv_rmse(y ~ x3+x4+x5+x6, d)), "\n")
+cat("LOOCV RMSE original:", round(loocv_rmse(y ~ x1+x4+x6+x7+x8+x9+x11+x13+x16+x19, d)), "\n")
+cat("LOOCV RMSE med x20: ", round(loocv_rmse(y ~ x1 + x4 +x6+ x7+ x8 + x19 + x20, d)), "\n")
+
+cat("AIC original:", AIC(m_orig), "\n")
+cat("AIC med x20: ", AIC(m_x20), "\n")
+```
+
+
+
+```{r}
+sol_vars  <- c("x9","x10","x11","x12","x13")
+temp_vars <- c("x14","x15","x16","x17","x18")
+
+# Standardiserat medelvarde av alla fem fordrojningar per variabelgrupp
+d$sol_index  <- as.numeric(rowMeans(scale(d[, sol_vars])))
+d$temp_index <- as.numeric(rowMeans(scale(d[, temp_vars])))
+
+m_index <- lm(y ~ x1 + x2 + x8 + sol_index + temp_index + x5, data = d)
+summary(m_index)
+vif(m_index)
+
+# Jamfor prediktionsformaga
+loocv_rmse <- function(formula, data) {
+  n <- nrow(data)
+  errs <- numeric(n)
+  for (i in 1:n) {
+    fit  <- lm(formula, data = data[-i, ])
+    pred <- predict(fit, newdata = data[i, ])
+    errs[i] <- data$y[i] - pred
+  }
+  sqrt(mean(errs^2))
+}
+
+loocv_rmse(y ~ x1+x2+x8+x9+x5, d)                        # original
+loocv_rmse(y ~ x1+x2+x8+sol_index+temp_index+x5, d)       # nya index
+
+cat("LOOCV RMSE original:", round(loocv_rmse(y ~ x1+x2+x8+x9+x5, d)), "\n")
+cat("LOOCV RMSE med m_index: ", round(loocv_rmse(y ~ x1+x2+x8+sol_index+temp_index+x5, d)), "\n")
+
+cat("AIC original:", AIC(m_orig), "\n")
+cat("AIC med m_index: ", AIC(m_index), "\n")
+```

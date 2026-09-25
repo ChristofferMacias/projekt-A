@@ -1,0 +1,168 @@
+---
+title: "A2 - Efterfrågan på charterresor"
+author: "Christoffer Macias"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+# install.packages("car")  # kör en gång om du saknar paketet
+library(car)
+```
+
+## Inledning
+
+Syftet med denna analys är att undersöka vilka variabler som förklarar
+efterfrågan på charterresor, och om det finns ett (eventuellt omvänt)
+samband mellan konjunktur och resande.
+
+## 1. Läs in data
+
+```{r load-data}
+d <- read.csv("A2_charter.csv")
+d$x2 <- factor(d$x2)   # säsong (kvartal 2/3) ska behandlas som kategorisk
+
+str(d)
+summary(d)
+```
+
+## 2. Deskriptiv analys
+
+```{r plot-y}
+plot(d$y, type = "b", main = "Antal resenärer över tid", ylab = "y", xlab = "Observation")
+```
+
+```{r cor-overview}
+print(sort(cor(d[sapply(d, is.numeric)])[, "y"], decreasing = TRUE))
+```
+
+Innan vi väljer variabler behöver vi kolla multikollinearitet *inom*
+varje variabelgrupp (samma bakomliggande mått, olika tidsförskjutning):
+
+```{r cor-groups}
+cat("Trend-lika variabler (x1, x7, x8, x19):\n")
+print(round(cor(d[, c("x1", "x7", "x8", "x19")]), 3))
+
+cat("\nKonjunktur x3-x6:\n")
+print(round(cor(d[, c("x3", "x4", "x5", "x6")]), 3))
+
+cat("\nSoltimmar x9-x13:\n")
+print(round(cor(d[, c("x9", "x10", "x11", "x12", "x13")]), 3))
+
+cat("\nTemperatur x14-x18:\n")
+print(round(cor(d[, c("x14", "x15", "x16", "x17", "x18")]), 3))
+```
+
+**Kommentar:** Variablerna inom respektive grupp är starkt korrelerade
+med varandra, så vi kan inte inkludera alla 19 X samtidigt (bara 26
+observationer totalt). Vi väljer en representant per grupp till en
+kandidatmodell.
+
+## 3. Kandidatmodell
+
+```{r cand-model}
+cand <- lm(y ~ x1 + x2 + x3 + x7 + x8 + x9 + x14 + x19, data = d)
+summary(cand)
+vif(cand)   # kolla att inget skenar (>10 = problem)
+```
+
+$$
+\text{VIF}=\frac{1}{1-R^2} #VIF = 52 för x2 betyder alltså att R² i den där hjälpregressionen är cirka 0.98 — nästan all variation i x2 (säsong) kan redan förklaras av de andra variablerna i modellen, framför allt x14 (temperatur). Det är egentligen inte konstigt: säsong och temperatur är nästan samma information i det här datasetet (kv2 är kallare, kv3 är varmare — de mäter i praktiken samma sak från två håll). Därför får x14 också en skyhög VIF (46.6) — de "förklarar varandra" ömsesidigt.
+$$
+
+
+## 4. Stegvis variabelurval
+
+```{r stepwise}
+step_model <- step(cand, direction = "both", trace = 1)
+summary(step_model)
+vif(step_model)
+```
+
+**Kommentar:** `step()` kan välja bort konjunkturvariabeln eftersom
+den är korrelerad med trenden (x1). Det betyder inte automatiskt att
+konjunktureffekten saknas — se avsnitt 5.
+
+## 5. Testa konjunktureffekten specifikt (partiell korrelation)
+
+Vi rensar bort trend/säsong/interrail/sol ur både y och x3–x6, och
+undersöker om sambandet finns kvar i det som blir över.
+
+```{r partial-corr}
+base <- lm(y ~ x1 + x2 + x8 + x9, data = d)
+resid_y <- resid(base)
+
+for (v in c("x3", "x4", "x5", "x6")) {
+  base_x  <- lm(d[[v]] ~ x1 + x2 + x8 + x9, data = d)
+  resid_x <- resid(base_x)
+  ct <- cor.test(resid_y, resid_x)
+  cat(sprintf("%s: partiell r = %.3f, p = %.3f\n", v, ct$estimate, ct$p.value))
+}
+```
+
+```{r konj-model}
+# Byt x5 mot x3/x4/x6 för robusthetscheck
+m_konj <- lm(y ~ x1 + x2 + x8 + x9 + x5, data = d)
+summary(m_konj)
+vif(m_konj)
+```
+
+## 6. Diagnostik på vald slutmodell
+
+```{r final-model}
+final_model <- m_konj   # byt ut mot den modell du landar i
+```
+
+```{r diag-plots, fig.height=7, fig.width=7}
+par(mfrow = c(2, 2))
+plot(final_model)
+par(mfrow = c(1, 1))
+```
+
+```{r diag-tests}
+durbinWatsonTest(final_model)     # autokorrelation (bör ha p > 0.05)
+shapiro.test(resid(final_model))  # normalitet på residualer (bör ha p > 0.05)
+```
+
+```{r influence}
+influencePlot(final_model)
+```
+
+
+
+## 7. Prediktion för 1978 (kvartal 2 och 3)
+
+Datasetet innehåller inga X-värden för 1978 — vi måste själva
+anta/konstruera rimliga värden för de variabler som ingår i vår
+slutmodell. Exemplet nedan bygger på historiska snitt; anpassa efter
+din egen slutmodell och vilka antaganden du vill göra.
+
+```{r prediction}
+nytt_data <- data.frame(
+  x1 = c(14, 14),                 # år 14 = 1978
+  x2 = factor(c(2, 3), levels = levels(d$x2)),
+  x8 = c(1, 1),                   # interrail finns kvar
+  x9 = c(mean(d$x9[d$x2 == 2]), mean(d$x9[d$x2 == 3])),
+  x5 = c(mean(tail(d$x3, 4)), mean(tail(d$x3, 4)))
+)
+
+pred <- predict(final_model, newdata = nytt_data, interval = "prediction")
+print(pred)
+```
+
+**Kommentar:** Notera i rapporten vilka antaganden som gjorts om
+framtida X-värden, och att prediktionsintervallet blir brett eftersom
+modellen bygger på bara 26 observationer och extrapolerar i tiden.
+
+## Slutsatser
+
+- Vilka variabler förklarar efterfrågan?
+- Kan ett konjunkturberoende påvisas — och är det i så fall positivt
+  eller negativt?
+- Hur säker är prognosen för 1978?
+
+*(Fyll i dina egna slutsatser här baserat på resultaten ovan.)*
