@@ -1,0 +1,89 @@
+---
+title: "Projekt_A"
+output: html_document
+date: "2026-09-23"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# A2: Efterfrågan på charterresor
+
+```{r}
+data <- read.csv("A2_charter.csv")
+head(data)
+summary(data)
+
+# Kvartal (X2) och Interrailkort (X8) är kategoriska variabler (inte mätvärden).
+data$x2 <- factor(data$x2)
+data$x8 <- factor(data$x8)
+
+# Korrelation, välj y (resenärer), x1 (år), x3 (konjunktur) och x9 (soltimmar)
+viktiga_variabler <- data[, c("y", "x1", "x3", "x9", "x14")]
+korrelationer <- cor(viktiga_variabler)
+print(korrelationer)
+
+# Plot av förklarande variabel mot responsen (Y). Här ser vi hur resandet (y) ökar över tid (x1), uppdelat på kvartal (x2)
+plot(x = data$x1, 
+     y = data$y, 
+     col = data$x2,  
+     pch = 16,       
+     xlab = "År (1 = 1965)", 
+     ylab = "Antal resenärer",
+     main = "Efterfrågan på charterresor över tid")
+
+legend("topleft", 
+       legend = levels(data$x2), 
+       col = 1:2, 
+       pch = 16, 
+       title = "Kvartal")
+
+```
+```{r}
+full_model <- lm(y ~ ., data = data)
+
+
+empty_model <- lm(y ~ 1, data = data)
+
+# Stegvis selektion (AIC), både framåt och bakåt
+step_model <- step(object = empty_model,
+                   scope = list(lower = formula(empty_model),
+                                upper = formula(full_model)),
+                   direction = "both")
+summary(step_model)
+
+model_final <- lm(y ~ x1 + x8 + x9 + x13 + x6, data = data)
+
+```
+
+```{r}
+# Multikollinearitet
+library(car)
+vif(model_final)
+
+```
+```{r}
+# Modellvalidering
+par(mfrow = c(2,2))
+plot(model_final)          
+par(mfrow = c(1,1))
+
+```
+```{r}
+# Outliers 
+shapiro.test(residuals(model_final))     # normalitet
+durbinWatsonTest(model_final)            # autokorrelation (tidsserie!)
+cooks.distance(model_final)              # inflytelserika punkter
+which(cooks.distance(model_final) > 4/nrow(data))
+ 
+# Känslighetsanalys: modell utan obs 22 (år 11, kv 3)
+model_no22 <- lm(y ~ x1 + x8 + x9 + x13 + x6, data = data[-22, ])
+summary(model_no22)
+```
+Känslighetsanalysen visar att observation 22 (år 11, kvartal 3) är ett extremvärde som "stör" modellen. När denna punkt exkluderas förbättras modellens övergripande precision (högre R² och lägre standardfel), och det blir ännu tydligare att variabel $X6$ saknar statistisk signifikans.
+
+
+
+
+
