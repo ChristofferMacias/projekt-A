@@ -5,6 +5,7 @@ date: "2026-09-25"
 output: html_document
 ---
 
+
 ```{r}
 library(car)
 d <- read.csv("A2_charter.csv")
@@ -16,13 +17,14 @@ cat("Korrelation x9 vs x14:", round(cor(d$x9, d$x14), 3), "\n")
 # Skapa x20: standardiserad summa av sol + temp (aktuellt kvartal)
 d$x20 <- as.numeric(scale(d$x9) + scale(d$x14))
 
-# Bygg och jamfor modellerna
+# Bygg och jämför modellerna
 m_orig <- lm(y ~ x1 + x4 +x6+ x7+ x8 + x9 + x11+ x13+ x16+ x19, data = d)
-m_x20  <- lm(y ~ x1 + x4 +x6+ x7+ x8 + x19 + x20,, data = d)
+m_x20  <- lm(y ~ x1 + x4 +x6+ x7+ x8 + x19 + x20, data = d)
 
 summary(m_orig)
-vif(m_orig)
 summary(m_x20)
+
+vif(m_orig)
 vif(m_x20)
 
 # LOOCV-funktion (leave-one-out cross-validation)
@@ -37,7 +39,6 @@ loocv_rmse <- function(formula, data) {
   sqrt(mean(errs^2))
 }
 
-cat("LOOCV RMSE med konjunktur: ", round(loocv_rmse(y ~ x3+x4+x5+x6, d)), "\n")
 cat("LOOCV RMSE original:", round(loocv_rmse(y ~ x1+x4+x6+x7+x8+x9+x11+x13+x16+x19, d)), "\n")
 cat("LOOCV RMSE med x20: ", round(loocv_rmse(y ~ x1 + x4 +x6+ x7+ x8 + x19 + x20, d)), "\n")
 
@@ -45,7 +46,18 @@ cat("AIC original:", AIC(m_orig), "\n")
 cat("AIC med x20: ", AIC(m_x20), "\n")
 ```
 
+Ett försök att förbättra modellen var att kombinera antalet soltimmar med medeltemperaturen för det aktuella kvartalet. För detta standardiserades x9 (soltimmar) och x14 (medeltemperatur), varefter de adderades till en ny variabel, x20. Korrelationen mellan x9 och x14 var -0,236, vilket visar på ett svagt negativt samband mellan variablerna.
+Den nya modellen jämfördes sedan med den ursprungliga modellen med hjälp av justerat $R^2$, VIF, LOOCV-RMSE och AIC. Det justerade $R^2$-värdet minskade från 0,9829 i den ursprungliga modellen till 0,9516 i modellen med x20. Detta innebär att den nya modellen har en sämre modellpassning enligt detta mått.
 
+Även resultaten från LOOCV talar för att den ursprungliga modellen ger bättre prediktioner. LOOCV-RMSE ökade från 11 741 för den ursprungliga modellen till 17 806 för modellen med x20. Eftersom ett lägre RMSE innebär mindre prediktionsfel tyder detta på att modellen med x20 har sämre prediktionsförmåga.
+
+AIC ger samma resultat. Den ursprungliga modellen har ett AIC på 557,59 medan modellen med x20 har ett AIC på 583,43. Eftersom lägre AIC är att föredra innebär detta att den ursprungliga modellen ger en bättre avvägning mellan modellens anpassning och dess komplexitet.
+
+VIF-värdena minskar däremot överlag när x20 införs. Exempelvis minskar VIF för x1 från 16,36 till 10,36 och för x4 från 5,46 till 3,39. Detta tyder på att multikollineariteten mellan de förklarande variablerna minskar i den nya modellen. VIF-värdet för den nya variabeln x20 är dessutom endast 1,28.
+
+Trots den minskade multikollineariteten verkar kombinationen av soltimmar och medeltemperatur alltså inte förbättra modellen. x20 har en skattad koefficient på -2532,8 och ett p-värde på 0,379, vilket innebär att det inte finns något tydligt statistiskt stöd för att den kombinerade variabeln bidrar till att förklara variationen i efterfrågan i denna modell.
+
+Sammantaget ger jämförelsen stöd för att behålla den ursprungliga modellen framför den modell där x9 och x14 kombineras till x20. Den ursprungliga modellen har högre justerat R², lägre LOOCV-RMSE och lägre AIC, även om modellen med x20 har lägre VIF-värden.
 
 ```{r}
 sol_vars  <- c("x9","x10","x11","x12","x13")
@@ -56,7 +68,11 @@ d$sol_index  <- as.numeric(rowMeans(scale(d[, sol_vars])))
 d$temp_index <- as.numeric(rowMeans(scale(d[, temp_vars])))
 
 m_index <- lm(y ~ x1 + x2 + x8 + sol_index + temp_index + x5, data = d)
+
+summary(m_orig)
 summary(m_index)
+
+vif(m_orig)
 vif(m_index)
 
 # Jamfor prediktionsformaga
@@ -71,12 +87,28 @@ loocv_rmse <- function(formula, data) {
   sqrt(mean(errs^2))
 }
 
-loocv_rmse(y ~ x1+x2+x8+x9+x5, d)                        # original
-loocv_rmse(y ~ x1+x2+x8+sol_index+temp_index+x5, d)       # nya index
+loocv_rmse(y ~ x1+x4+x6+x7+x8+x9+x11+x13+x16+x19, d)                        # original
+loocv_rmse(y ~ x1 + x4 +x6+ x7+ x8 + x19 +sol_index + temp_index + x5, d)       # nya index
 
-cat("LOOCV RMSE original:", round(loocv_rmse(y ~ x1+x2+x8+x9+x5, d)), "\n")
-cat("LOOCV RMSE med m_index: ", round(loocv_rmse(y ~ x1+x2+x8+sol_index+temp_index+x5, d)), "\n")
+cat("LOOCV RMSE original:", round(loocv_rmse(y ~ x1+x4+x6+x7+x8+x9+x11+x13+x16+x19, d)), "\n")
+cat("LOOCV RMSE med m_index: ", round(loocv_rmse(y ~ x1 + x4 +x6+ x7+ x8 + x19 +sol_index + temp_index + x5, d)), "\n")
 
 cat("AIC original:", AIC(m_orig), "\n")
 cat("AIC med m_index: ", AIC(m_index), "\n")
 ```
+
+
+
+
+För att ytterligare förenkla modellen skapades två indexvariabler. Solindexet består av medelvärdet av de standardiserade variablerna för soltimmar under aktuellt kvartal och de fyra föregående kvartalen (x9–x13). På motsvarande sätt skapades ett temperaturindex genom att ta medelvärdet av de standardiserade temperaturvariablerna för samma period (x14–x18). Syftet med detta var att sammanfatta informationen från de fem fördröjningarna för respektive variabelgrupp till två variabler.
+Jämfört med den ursprungliga modellen minskar det justerade $R^2$-värdet från 0,9829 till 0,9778. Detta innebär att indexmodellen har något sämre modellpassning, men skillnaden är relativt liten. Modellen behåller alltså en stor del av den förklaringsförmåga som finns i den ursprungliga modellen trots att antalet variabler har minskat.
+
+I indexmodellen är solindexet statistiskt signifikant med ett p-värde på 0,0059. Koefficienten är negativ, vilket innebär att högre värden på solindexet är förknippade med lägre efterfrågan på charterresor, givet övriga variabler i modellen. Temperaturindexet har också en negativ skattad koefficient, men p-värdet är 0,1866. Det finns därför inte tillräckligt statistiskt stöd för att säga att temperaturindexet har ett självständigt samband med efterfrågan i denna modell.
+
+En tydlig fördel med indexmodellen är att multikollineariteten minskar. I den ursprungliga modellen är exempelvis VIF för x1 16,36 och VIF för x7 11,56. I indexmodellen minskar dessa värden till 4,60 respektive 4,51 för de relevanta variablerna, medan solindexet har ett VIF på endast 1,80. Detta tyder på att den nya modellen har mindre problem med multikollinearitet än den ursprungliga modellen.
+
+När prediktionsförmågan undersöks med leave-one-out cross-validation blir resultatet däremot sämre för indexmodellen. LOOCV-RMSE ökar från 11 741 i originalmodellen till 13 622 i indexmodellen. Eftersom lägre RMSE innebär mindre prediktionsfel tyder detta på att den ursprungliga modellen har bättre prediktionsförmåga.
+
+Även AIC är något högre för indexmodellen. Originalmodellen har ett AIC på 557,59 medan indexmodellen har 562,51. Även detta talar för att den ursprungliga modellen ger en något bättre kombination av modellpassning och komplexitet.
+
+Sammantaget innebär resultatet att indexmodellen ger en enklare modell med betydligt mindre multikollinearitet, samtidigt som den behåller en relativt hög förklaringsgrad. Solindexet visar dessutom ett statistiskt signifikant negativt samband med efterfrågan. Däremot försämras prediktionsförmågan jämfört med originalmodellen, vilket visas av det högre LOOCV-RMSE och det något högre AIC-värdet. För prediktionssyftet verkar därför originalmodellen innehålla information som går förlorad när de fem fördröjningarna av soltimmar och temperatur sammanfattas till två index.
